@@ -14,4 +14,10 @@ html, body {
     border: 1px solid #000;
     background: #fff;
   }
+
+  button {
+    margin-top: 8px;
+    padding: 6px 12px;
+    cursor: pointer;
+  }
   
