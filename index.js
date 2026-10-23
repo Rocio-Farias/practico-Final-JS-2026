@@ -1,76 +1,101 @@
-// Variables globales y configuración básica
 const canvas = document.getElementById("gameCanvas");
 const ctx = canvas.getContext("2d");
+const restartBtn = document.getElementById("restartBtn");
+const manualRestartBtn = document.getElementById("manualRestartBtn");
 
-let gameSpeed = 5;           // Velocidad constante (los cambios se harán en la modificación)
-let gravity = 0.5;           // Fuerza de gravedad
+// Valores iniciales del juego
+const velocidadInicial = 5;
+const aumentoVelocidad = 0.5;
+const gravedad = 0.5;
+
+let gameSpeed = velocidadInicial;
 let gameOver = false;
 let score = 0;
+let highScore = Number(localStorage.getItem("dinoHighScore")) || 0;
+let audioContext;
+let animationFrameId;
 
-// Objeto dinosaurio
-let dino = {
+// Datos del dinosaurio
+const dino = {
     x: 50,
-    y: canvas.height - 47,   // La altura del dino es de 47 px (se alinea al "suelo")
+    y: canvas.height - 47,
     width: 44,
     height: 47,
     vy: 0,
     isJumping: false
 };
 
-// Objeto obstáculo (cacto)
-let obstacle = {
+// Datos del cactus que tenemos que esquivar
+const obstacle = {
     x: canvas.width,
-    y: canvas.height - 40,   // Altura del cacto: 40 px, alineado al suelo
+    y: canvas.height - 40,
     width: 25,
     height: 40
 };
 
-// Carga de imágenes (ajusta las rutas según tu estructura)
-let dinoImg = new Image();
-dinoImg.src = "dino.png";      // Asegúrate de tener esta imagen en la ruta indicada
-let cactusImg = new Image();
-cactusImg.src = "cactus.png";  // Asegúrate de tener esta imagen en la ruta indicada
+// Cargamos las imágenes del juego
+const dinoImg = new Image();
+dinoImg.src = "assets/css/dino.png";
 
-// Función principal del ciclo de juego
+const cactusImg = new Image();
+cactusImg.src = "assets/css/cactus.png";
+
+// Esta función mantiene el juego en movimiento
 function gameLoop() {
     if (!gameOver) {
         update();
         draw();
-        requestAnimationFrame(gameLoop);
+
+        animationFrameId = requestAnimationFrame(gameLoop);
     }
 }
 
-// Actualiza posiciones y controla la lógica del juego
+// Actualiza el puntaje, la velocidad y la posición de los objetos
 function update() {
-    score++;  // Suma puntos continuamente (1 punto por frame)
-    
-    // Física del salto del dinosaurio
+    score++;
+
+    if (score > highScore) {
+        highScore = score;
+    }
+
+    // El juego se vuelve más rápido cada 100 puntos
+    gameSpeed = velocidadInicial
+        + Math.floor(score / 100) * aumentoVelocidad;
+
+    if (score % 100 === 0) {
+        playSound(880);
+    }
+
+    // Movimiento del dinosaurio cuando salta
     if (dino.isJumping) {
-        dino.vy += gravity;
+        dino.vy += gravedad;
         dino.y += dino.vy;
-        // Cuando el dino aterriza en el "suelo"
+
+        // Cuando toca el suelo, termina el salto
         if (dino.y >= canvas.height - dino.height) {
             dino.y = canvas.height - dino.height;
             dino.isJumping = false;
             dino.vy = 0;
         }
     }
-    
-    // Mueve el obstáculo de derecha a izquierda
+
+    // El cactus se mueve hacia la izquierda
     obstacle.x -= gameSpeed;
-    // Cuando el obstáculo sale por la izquierda, se reubica a la derecha con un espacio aleatorio
+
+    // Cuando sale de la pantalla, vuelve a aparecer
     if (obstacle.x + obstacle.width < 0) {
         obstacle.x = canvas.width + Math.random() * 200;
     }
-    
-    // Detección simple de colisiones (rectángulos)
+
+    // Si el dinosaurio toca el cactus, termina el juego
     if (collision(dino, obstacle)) {
         gameOver = true;
-        document.getElementById("restartBtn").style.display = "block";
+        saveHighScore();
+        restartBtn.hidden = false;
     }
 }
 
-// Función de detección de colisiones
+// Comprueba si el dinosaurio choca con el cactus
 function collision(rect1, rect2) {
     return (
         rect1.x < rect2.x + rect2.width &&
@@ -80,55 +105,137 @@ function collision(rect1, rect2) {
     );
 }
 
-// Dibuja el juego: fondo, puntaje, dinosaurio y obstáculo
+// Dibuja el dinosaurio, el cactus y los puntajes
 function draw() {
     ctx.clearRect(0, 0, canvas.width, canvas.height);
-    
-    // Dibuja el puntaje
+
     ctx.fillStyle = "#000";
-    ctx.font = "20px Arial";
-    ctx.fillText("Score: " + score, 10, 25);
-    
-    // Dibuja el dinosaurio (si la imagen está cargada, se usa; si no, se dibuja un rectángulo verde)
+    ctx.font = "16px Arial";
+    ctx.fillText("Puntaje: " + score, 10, 22);
+    ctx.fillText("Récord: " + highScore, 475, 22);
+
+    // Dibujamos el dinosaurio
+    ctx.save();
+
+    if (dino.isJumping) {
+        ctx.filter = "hue-rotate(120deg)";
+    }
+
     if (dinoImg.complete) {
-        ctx.drawImage(dinoImg, dino.x, dino.y, dino.width, dino.height);
+        ctx.drawImage(
+            dinoImg,
+            dino.x,
+            dino.y,
+            dino.width,
+            dino.height
+        );
     } else {
-        ctx.fillStyle = "green";
+        // Si no carga la imagen, usamos un rectángulo
+        ctx.fillStyle = dino.isJumping ? "#16a34a" : "green";
         ctx.fillRect(dino.x, dino.y, dino.width, dino.height);
     }
-    
-    // Dibuja el obstáculo (si la imagen está cargada, se usa; si no, se dibuja un rectángulo marrón)
+
+    ctx.restore();
+
+    // Dibujamos el cactus
     if (cactusImg.complete) {
-        ctx.drawImage(cactusImg, obstacle.x, obstacle.y, obstacle.width, obstacle.height);
+        ctx.drawImage(
+            cactusImg,
+            obstacle.x,
+            obstacle.y,
+            obstacle.width,
+            obstacle.height
+        );
     } else {
         ctx.fillStyle = "brown";
-        ctx.fillRect(obstacle.x, obstacle.y, obstacle.width, obstacle.height);
+        ctx.fillRect(
+            obstacle.x,
+            obstacle.y,
+            obstacle.width,
+            obstacle.height
+        );
     }
 }
 
-// Maneja el salto al presionar la barra espaciadora
-document.addEventListener("keydown", function(e) {
-    if (e.code === "Space" && !dino.isJumping && !gameOver) {
-        dino.isJumping = true;
-        dino.vy = -10;  // Velocidad inicial de salto
-        // Aquí se podrá agregar el efecto de sonido del salto en la modificación
-        e.preventDefault(); // Evita el scroll de la página
+// Reproduce sonidos con diferentes frecuencias
+function playSound(frequency) {
+    if (typeof window.AudioContext === "undefined") {
+        return;
     }
-});
 
-// Función para reiniciar el juego al hacer clic en el botón
-document.getElementById("restartBtn").addEventListener("click", function() {
+    if (!audioContext) {
+        audioContext = new AudioContext();
+    }
+
+    if (audioContext.state === "suspended") {
+        audioContext.resume();
+    }
+
+    const oscillator = audioContext.createOscillator();
+    const volume = audioContext.createGain();
+
+    oscillator.frequency.value = frequency;
+
+    volume.gain.setValueAtTime(0.15, audioContext.currentTime);
+    volume.gain.exponentialRampToValueAtTime(
+        0.001,
+        audioContext.currentTime + 0.12
+    );
+
+    oscillator.connect(volume);
+    volume.connect(audioContext.destination);
+
+    oscillator.start();
+    oscillator.stop(audioContext.currentTime + 0.12);
+}
+
+// Guarda el récord para que no se pierda al cerrar la página
+function saveHighScore() {
+    localStorage.setItem("dinoHighScore", String(highScore));
+}
+
+// Hace saltar al dinosaurio si está en el suelo
+function jump() {
+    if (!dino.isJumping && !gameOver) {
+        dino.isJumping = true;
+        dino.vy = -10;
+        playSound(520);
+    }
+}
+
+// Reinicia los valores para empezar una nueva partida
+function resetGame() {
+    cancelAnimationFrame(animationFrameId);
+    saveHighScore();
+
     gameOver = false;
     score = 0;
+    gameSpeed = velocidadInicial;
+
     dino.y = canvas.height - dino.height;
     dino.isJumping = false;
     dino.vy = 0;
+
     obstacle.x = canvas.width;
-    this.style.display = "none";
-    gameLoop();
+    restartBtn.hidden = true;
+
+    draw();
+    animationFrameId = requestAnimationFrame(gameLoop);
+}
+
+// Permite saltar usando la barra espaciadora
+document.addEventListener("keydown", function(event) {
+    if (event.code === "Space") {
+        event.preventDefault();
+        jump();
+    }
 });
 
-// Inicia el juego cuando la ventana carga
-window.onload = function() {
-    gameLoop();
-};
+// Los dos botones sirven para volver a jugar
+restartBtn.addEventListener("click", resetGame);
+manualRestartBtn.addEventListener("click", resetGame);
+
+// Dibujamos la pantalla inicial y empezamos el juego
+draw();
+animationFrameId = requestAnimationFrame(gameLoop);
+
